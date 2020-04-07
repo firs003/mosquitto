@@ -135,8 +135,8 @@ CFLAGS += -I/home/sleng/open/openssl/out/$(THIRD_PARTY_ARCH)/include
 CPPFLAGS += -I/home/sleng/open/openssl/out/$(THIRD_PARTY_ARCH)/include
 LDFLAGS += -L/home/sleng/open/openssl/out/$(THIRD_PARTY_ARCH)/lib
 LIBADD += -L/home/sleng/open/openssl/out/$(THIRD_PARTY_ARCH)/lib
-# CROSS_COMPILE := mipsel-openwrt-linux-
-# CC := gcc
+CROSS_COMPILE := mipsel-openwrt-linux-
+CC := gcc
 # ifeq ($(CONFIG_USE_UCLIBC),y)
 # MAKE_FLAGS += WITH_MEMORY_TRACKING=no
 # endif
