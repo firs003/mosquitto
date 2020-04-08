@@ -4,12 +4,12 @@ Copyright (c) 2009-2019 Roger Light <roger@atchoo.org>
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License v1.0
 and Eclipse Distribution License v1.0 which accompany this distribution.
- 
+
 The Eclipse Public License is available at
    http://www.eclipse.org/legal/epl-v10.html
 and the Eclipse Distribution License is available at
   http://www.eclipse.org/org/documents/edl-v10.php.
- 
+
 Contributors:
    Roger Light - initial implementation and documentation.
 */
@@ -34,6 +34,7 @@ Contributors:
 #include <mosquitto.h>
 #include <mqtt_protocol.h>
 #include "client_shared.h"
+#include "base64.h"
 
 struct mosq_config cfg;
 bool process_messages = true;
@@ -97,6 +98,14 @@ void my_message_callback(struct mosquitto *mosq, void *obj, const struct mosquit
 	}
 
 	print_message(&cfg, message);
+	{
+		unsigned char src[32] = "MQ==";
+		int srclen = sizeof(src);
+		unsigned char dst[128] = {0, };
+		int dstlen = sizeof(dst);
+		base64_decode(src, srclen, dst, &dstlen);
+		printf("decode[%d]=%s\n", dstlen, dst);
+	}
 
 	if(cfg.msg_count>0){
 		msg_count++;
