@@ -59,6 +59,9 @@ client_shared.o : client_shared.c client_shared.h
 client_props.o : client_props.c client_shared.h
 	${CROSS_COMPILE}${CC} $(CLIENT_CPPFLAGS) $(CLIENT_CFLAGS) -c $< -o $@
 
+base64.o : base64.c base64.h
+	${CROSS_COMPILE}${CC} $(CLIENT_CPPFLAGS) $(CLIENT_CFLAGS) -c $< -o $@
+
 ../lib/libmosquitto.so.${SOVERSION} :
 	$(MAKE) -C ../lib
 
