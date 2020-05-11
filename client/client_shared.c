@@ -4,12 +4,12 @@ Copyright (c) 2014-2019 Roger Light <roger@atchoo.org>
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License v1.0
 and Eclipse Distribution License v1.0 which accompany this distribution.
- 
+
 The Eclipse Public License is available at
    http://www.eclipse.org/legal/epl-v10.html
 and the Eclipse Distribution License is available at
   http://www.eclipse.org/org/documents/edl-v10.php.
- 
+
 Contributors:
    Roger Light - initial implementation and documentation.
 */
@@ -35,6 +35,7 @@ Contributors:
 #include <mosquitto.h>
 #include <mqtt_protocol.h>
 #include "client_shared.h"
+#include "sleng_debug.h"
 
 #ifdef WITH_SOCKS
 static int mosquitto__parse_socks_url(struct mosq_config *cfg, char *url);
@@ -139,6 +140,91 @@ void init_config(struct mosq_config *cfg, int pub_or_sub)
 	}else{
 		cfg->protocol_version = MQTT_PROTOCOL_V311;
 	}
+}
+
+/**********************************************************************
+* function:print info in format like Ultra Edit
+* input:	buf to print,
+* 			length to print,
+* 			prestr before info,
+* 			endstr after info
+* output:	void
+**********************************************************************/
+static void _print_in_hex(void *buf, int len, char *pre, char *end) {
+	int i, j, k, row=(len>>4);
+	if (buf == NULL) {
+		printf("params invalid, buf=%p", buf);
+		return;
+	}
+	if (pre) printf("%s:\n", pre);
+	for (i=0, k=0; k<row; ++k) {
+		printf("\t[0%02d0] ", k);
+		for (j=0; j<8; ++j, ++i) printf("%02hhx ", *((unsigned char *)buf+i));
+		printf("  ");
+		for (j=8; j<16; ++j, ++i) printf("%02hhx ", *((unsigned char *)buf+i));
+		printf("\n");
+	}
+	if (len&0xf) {
+		printf("\t[0%02d0] ", k);
+		for (k=0; k<(len&0xf); ++k, ++i) {
+			if (k==8) printf("  ");
+			printf("%02hhx ", *((unsigned char *)buf+i));
+		}
+		printf("\n");
+	}
+	if (end) printf("%s", end);
+	printf("\n");
+}
+
+void init_config_v2(struct mosq_config *cfg, int pub_or_sub, bool *flag)
+{
+	sleng_debug("flag = %d\n", *flag);
+	sleng_debug("flag(%p) - cfg(%p) = %u, sizeof(cfg) = %d\n", flag, cfg, (void *)flag - (void *)cfg, sizeof(*cfg));
+	_print_in_hex(cfg, sizeof(struct mosq_config), "lib cfg struct", NULL);
+	sleng_debug("last member offset = %d\n", offsetof(struct mosq_config, response_topic));
+	sleng_debug("struct mosq_cfg map:\n");
+	sleng_debug("\t->id :%d\n", offsetof(struct mosq_config, id));
+	sleng_debug("\t->id_prefix :%d\n", offsetof(struct mosq_config, id_prefix));
+	sleng_debug("\t->protocol_version :%d\n", offsetof(struct mosq_config, protocol_version));
+	sleng_debug("\t->keepalive :%d\n", offsetof(struct mosq_config, keepalive));
+	sleng_debug("\t->host :%d\n", offsetof(struct mosq_config, host));
+	sleng_debug("\t->port :%d\n", offsetof(struct mosq_config, port));
+	sleng_debug("\t->qos :%d\n", offsetof(struct mosq_config, qos));
+	sleng_debug("\t->retain :%d\n", offsetof(struct mosq_config, retain));
+	sleng_debug("\t->pub_mode :%d\n", offsetof(struct mosq_config, pub_mode));
+	sleng_debug("\t->file_input :%d\n", offsetof(struct mosq_config, file_input));
+	sleng_debug("\t->message :%d\n", offsetof(struct mosq_config, message));
+	sleng_debug("\t->msglen :%d\n", offsetof(struct mosq_config, msglen));
+	sleng_debug("\t->topic :%d\n", offsetof(struct mosq_config, topic));
+	sleng_debug("\t->bind_address :%d\n", offsetof(struct mosq_config, bind_address));
+	sleng_debug("\t->repeat_count :%d\n", offsetof(struct mosq_config, repeat_count));
+	sleng_debug("\t->repeat_delay :%d\n", offsetof(struct mosq_config, repeat_delay));
+	sleng_debug("\t->debug :%d\n", offsetof(struct mosq_config, debug));
+	sleng_debug("\t->quiet :%d\n", offsetof(struct mosq_config, quiet));
+	sleng_debug("\t->sub_opts :%d\n", offsetof(struct mosq_config, sub_opts));
+	// sleng_debug("\t->socks5_host :%d\n", offsetof(struct mosq_config, socks5_host));
+	// sleng_debug("\t->socks5_port :%d\n", offsetof(struct mosq_config, socks5_port));
+	// sleng_debug("\t->socks5_username :%d\n", offsetof(struct mosq_config, socks5_username));
+	// sleng_debug("\t->socks5_password :%d\n", offsetof(struct mosq_config, socks5_password));
+	sleng_debug("\t->connect_props :%d\n", offsetof(struct mosq_config, connect_props));
+	memset(cfg, 0, sizeof(*cfg));
+	sleng_debug("flag = %d\n", *flag);
+	cfg->port = -1;
+	cfg->max_inflight = 20;
+	cfg->keepalive = 60;
+	cfg->clean_session = true;
+	cfg->eol = true;
+	cfg->repeat_count = 1;
+	cfg->repeat_delay.tv_sec = 0;
+	cfg->repeat_delay.tv_usec = 0;
+	sleng_debug("flag = %d\n", *flag);
+	if(pub_or_sub == CLIENT_RR){
+		cfg->protocol_version = MQTT_PROTOCOL_V5;
+		cfg->msg_count = 1;
+	}else{
+		cfg->protocol_version = MQTT_PROTOCOL_V311;
+	}
+	sleng_debug("flag = %d\n", *flag);
 }
 
 void client_config_cleanup(struct mosq_config *cfg)
@@ -400,6 +486,216 @@ int client_config_load(struct mosq_config *cfg, int pub_or_sub, int argc, char *
 		err_printf(cfg, "Error in Will properties: %s\n", mosquitto_strerror(rc));
 		return 1;
 	}
+
+	return MOSQ_ERR_SUCCESS;
+}
+
+int client_config_load_v2(struct mosq_config *cfg, int pub_or_sub, int argc, char *argv[], bool *flag)
+{
+	int rc;
+	FILE *fptr;
+	char line[1024];
+	int count;
+	char *loc = NULL;
+	int len;
+	char *args[3];
+
+#ifndef WIN32
+	char *env;
+#else
+	char env[1024];
+#endif
+	args[0] = NULL;
+
+	sleng_debug("flag = %d\n", *flag);
+
+	init_config_v2(cfg, pub_or_sub, flag);
+
+	sleng_debug("flag = %d\n", *flag);
+
+	/* Default config file */
+#ifndef WIN32
+	env = getenv("XDG_CONFIG_HOME");
+	if(env){
+		len = strlen(env) + strlen("/mosquitto_pub") + 1;
+		loc = malloc(len);
+		if(!loc){
+			err_printf(cfg, "Error: Out of memory.\n");
+			return 1;
+		}
+		if(pub_or_sub == CLIENT_PUB){
+			snprintf(loc, len, "%s/mosquitto_pub", env);
+		}else if(pub_or_sub == CLIENT_SUB){
+			snprintf(loc, len, "%s/mosquitto_sub", env);
+		}else{
+			snprintf(loc, len, "%s/mosquitto_rr", env);
+		}
+		loc[len-1] = '\0';
+	}else{
+		env = getenv("HOME");
+		if(env){
+			len = strlen(env) + strlen("/.config/mosquitto_pub") + 1;
+			loc = malloc(len);
+			if(!loc){
+				err_printf(cfg, "Error: Out of memory.\n");
+				return 1;
+			}
+			if(pub_or_sub == CLIENT_PUB){
+				snprintf(loc, len, "%s/.config/mosquitto_pub", env);
+			}else if(pub_or_sub == CLIENT_SUB){
+				snprintf(loc, len, "%s/.config/mosquitto_sub", env);
+			}else{
+				snprintf(loc, len, "%s/.config/mosquitto_rr", env);
+			}
+			loc[len-1] = '\0';
+		}
+	}
+	sleng_debug("flag = %d\n", *flag);
+
+#else
+	rc = GetEnvironmentVariable("USERPROFILE", env, 1024);
+	if(rc > 0 && rc < 1024){
+		len = strlen(env) + strlen("\\mosquitto_pub.conf") + 1;
+		loc = malloc(len);
+		if(!loc){
+			err_printf(cfg, "Error: Out of memory.\n");
+			return 1;
+		}
+		if(pub_or_sub == CLIENT_PUB){
+			snprintf(loc, len, "%s\\mosquitto_pub.conf", env);
+		}else if(pub_or_sub == CLIENT_SUB){
+			snprintf(loc, len, "%s\\mosquitto_sub.conf", env);
+		}else{
+			snprintf(loc, len, "%s\\mosquitto_rr.conf", env);
+		}
+		loc[len-1] = '\0';
+	}
+#endif
+
+	if(loc){
+		fptr = fopen(loc, "rt");
+		if(fptr){
+			while(fgets(line, 1024, fptr)){
+				if(line[0] == '#') continue; /* Comments */
+
+				while(line[strlen(line)-1] == 10 || line[strlen(line)-1] == 13){
+					line[strlen(line)-1] = 0;
+				}
+				/* All offset by one "args" here, because real argc/argv has
+				* program name as the first entry. */
+				args[1] = strtok(line, " ");
+				if(args[1]){
+					args[2] = strtok(NULL, " ");
+					if(args[2]){
+						count = 3;
+					}else{
+						count = 2;
+					}
+					rc = client_config_line_proc(cfg, pub_or_sub, count, args);
+					if(rc){
+						fclose(fptr);
+						free(loc);
+						return rc;
+					}
+				}
+			}
+			fclose(fptr);
+		}
+		free(loc);
+	}
+	sleng_debug("flag = %d\n", *flag);
+
+	/* Deal with real argc/argv */
+	rc = client_config_line_proc(cfg, pub_or_sub, argc, argv);
+	sleng_debug("flag = %d\n", *flag);
+	if(rc) return rc;
+
+	if(cfg->will_payload && !cfg->will_topic){
+		fprintf(stderr, "Error: Will payload given, but no will topic given.\n");
+		return 1;
+	}
+	if(cfg->will_retain && !cfg->will_topic){
+		fprintf(stderr, "Error: Will retain given, but no will topic given.\n");
+		return 1;
+	}
+#ifdef WITH_TLS
+	if((cfg->certfile && !cfg->keyfile) || (cfg->keyfile && !cfg->certfile)){
+		fprintf(stderr, "Error: Both certfile and keyfile must be provided if one of them is set.\n");
+		return 1;
+	}
+	if((cfg->keyform && !cfg->keyfile)){
+		fprintf(stderr, "Error: If keyform is set, keyfile must be also specified.\n");
+		return 1;
+	}
+	if((cfg->tls_engine_kpass_sha1 && (!cfg->keyform || !cfg->tls_engine))){
+		fprintf(stderr, "Error: when using tls-engine-kpass-sha1, both tls-engine and keyform must also be provided.\n");
+		return 1;
+	}
+#endif
+#ifdef FINAL_WITH_TLS_PSK
+	if((cfg->cafile || cfg->capath) && cfg->psk){
+		fprintf(stderr, "Error: Only one of --psk or --cafile/--capath may be used at once.\n");
+		return 1;
+	}
+	if(cfg->psk && !cfg->psk_identity){
+		fprintf(stderr, "Error: --psk-identity required if --psk used.\n");
+		return 1;
+	}
+#endif
+	sleng_debug("flag = %d\n", *flag);
+
+	if(cfg->clean_session == false && (cfg->id_prefix || !cfg->id)){
+		fprintf(stderr, "Error: You must provide a client id if you are using the -c option.\n");
+		return 1;
+	}
+
+	if(pub_or_sub == CLIENT_SUB){
+		if(cfg->topic_count == 0){
+			fprintf(stderr, "Error: You must specify a topic to subscribe to.\n");
+			return 1;
+		}
+	}
+
+	if(!cfg->host){
+		cfg->host = strdup("localhost");
+		if(!cfg->host){
+			err_printf(cfg, "Error: Out of memory.\n");
+			return 1;
+		}
+	}
+	sleng_debug("flag = %d\n", *flag);
+
+	rc = mosquitto_property_check_all(CMD_CONNECT, cfg->connect_props);
+	if(rc){
+		err_printf(cfg, "Error in CONNECT properties: %s\n", mosquitto_strerror(rc));
+		return 1;
+	}
+	rc = mosquitto_property_check_all(CMD_PUBLISH, cfg->publish_props);
+	if(rc){
+		err_printf(cfg, "Error in PUBLISH properties: %s\n", mosquitto_strerror(rc));
+		return 1;
+	}
+	rc = mosquitto_property_check_all(CMD_SUBSCRIBE, cfg->subscribe_props);
+	if(rc){
+		err_printf(cfg, "Error in SUBSCRIBE properties: %s\n", mosquitto_strerror(rc));
+		return 1;
+	}
+	rc = mosquitto_property_check_all(CMD_UNSUBSCRIBE, cfg->unsubscribe_props);
+	if(rc){
+		err_printf(cfg, "Error in UNSUBSCRIBE properties: %s\n", mosquitto_strerror(rc));
+		return 1;
+	}
+	rc = mosquitto_property_check_all(CMD_DISCONNECT, cfg->disconnect_props);
+	if(rc){
+		err_printf(cfg, "Error in DISCONNECT properties: %s\n", mosquitto_strerror(rc));
+		return 1;
+	}
+	rc = mosquitto_property_check_all(CMD_WILL, cfg->will_props);
+	if(rc){
+		err_printf(cfg, "Error in Will properties: %s\n", mosquitto_strerror(rc));
+		return 1;
+	}
+	sleng_debug("flag = %d\n", *flag);
 
 	return MOSQ_ERR_SUCCESS;
 }
@@ -866,7 +1162,7 @@ int client_config_line_proc(struct mosq_config *cfg, int pub_or_sub, int argc, c
 			if(cfg->pub_mode != MSGMODE_NONE){
 				fprintf(stderr, "Error: Only one type of message can be sent at once.\n\n");
 				return 1;
-			}else{ 
+			}else{
 				cfg->pub_mode = MSGMODE_STDIN_FILE;
 			}
 #ifdef WITH_SRV

@@ -74,10 +74,10 @@ WITH_EC:=yes
 WITH_DOCS:=no
 
 # Build with client support for SOCK5 proxy.
-WITH_SOCKS:=yes
+WITH_SOCKS:=no
 
 # Strip executables and shared libraries on install.
-WITH_STRIP:=no
+WITH_STRIP:=yes
 
 # Build static libraries
 WITH_STATIC_LIBRARIES:=no
