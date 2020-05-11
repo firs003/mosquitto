@@ -36,18 +36,31 @@ Contributors:
 #include "client_shared.h"
 #include "base64.h"
 
-struct mosq_config cfg;
-bool process_messages = true;
-int msg_count = 0;
-struct mosquitto *mosq = NULL;
-int last_mid = 0;
+// struct mosq_config fd->cfg;
+// bool fd->process_messages = true;
+// int fd->msg_count = 0;
+// struct mosquitto *mosq = NULL;
+// int fd->last_mid = 0;
+
+typedef struct sub_client_file_descripe
+{
+	struct mosq_config cfg;
+	bool process_messages;
+	int msg_count;
+	struct mosquitto *mosq;
+	int last_mid;
+} SUB_CLIENT_FD_S, *PSUB_CLIENT_FD_S;
+#define SUB_CLIENT_FD_S_LEN sizeof(SUB_CLIENT_FD_S)
+
+SUB_CLIENT_FD_S sub_client_fd = {{0}, true, 0, NULL, 0};
 
 #ifndef WIN32
 void my_signal_handler(int signum)
 {
+	PSUB_CLIENT_FD_S fd = &sub_client_fd;
 	if(signum == SIGALRM){
-		process_messages = false;
-		mosquitto_disconnect_v5(mosq, MQTT_RC_DISCONNECT_WITH_WILL_MSG, cfg.disconnect_props);
+		fd->process_messages = false;
+		mosquitto_disconnect_v5(fd->mosq, MQTT_RC_DISCONNECT_WITH_WILL_MSG, fd->cfg.disconnect_props);
 	}
 }
 #endif
@@ -57,47 +70,49 @@ void print_message(struct mosq_config *cfg, const struct mosquitto_message *mess
 
 void my_publish_callback(struct mosquitto *mosq, void *obj, int mid, int reason_code, const mosquitto_property *properties)
 {
+	PSUB_CLIENT_FD_S fd = &sub_client_fd;
 	UNUSED(obj);
 	UNUSED(reason_code);
 	UNUSED(properties);
 
-	if(process_messages == false && (mid == last_mid || last_mid == 0)){
-		mosquitto_disconnect_v5(mosq, 0, cfg.disconnect_props);
+	if(fd->process_messages == false && (mid == fd->last_mid || fd->last_mid == 0)){
+		mosquitto_disconnect_v5(mosq, 0, fd->cfg.disconnect_props);
 	}
 }
 
 
 void my_message_callback(struct mosquitto *mosq, void *obj, const struct mosquitto_message *message, const mosquitto_property *properties)
 {
+	PSUB_CLIENT_FD_S fd = &sub_client_fd;
 	int i;
 	bool res;
 
 	UNUSED(obj);
 	UNUSED(properties);
 
-	if(process_messages == false) return;
+	if(fd->process_messages == false) return;
 
-	if(cfg.remove_retained && message->retain){
-		mosquitto_publish(mosq, &last_mid, message->topic, 0, NULL, 1, true);
+	if(fd->cfg.remove_retained && message->retain){
+		mosquitto_publish(mosq, &fd->last_mid, message->topic, 0, NULL, 1, true);
 	}
 
-	if(cfg.retained_only && !message->retain && process_messages){
-		process_messages = false;
-		if(last_mid == 0){
-			mosquitto_disconnect_v5(mosq, 0, cfg.disconnect_props);
+	if(fd->cfg.retained_only && !message->retain && fd->process_messages){
+		fd->process_messages = false;
+		if(fd->last_mid == 0){
+			mosquitto_disconnect_v5(mosq, 0, fd->cfg.disconnect_props);
 		}
 		return;
 	}
 
-	if(message->retain && cfg.no_retain) return;
-	if(cfg.filter_outs){
-		for(i=0; i<cfg.filter_out_count; i++){
-			mosquitto_topic_matches_sub(cfg.filter_outs[i], message->topic, &res);
+	if(message->retain && fd->cfg.no_retain) return;
+	if(fd->cfg.filter_outs){
+		for(i=0; i<fd->cfg.filter_out_count; i++){
+			mosquitto_topic_matches_sub(fd->cfg.filter_outs[i], message->topic, &res);
 			if(res) return;
 		}
 	}
 
-	print_message(&cfg, message);
+	print_message(&fd->cfg, message);
 	{
 		unsigned char src[32] = "MQ==";
 		int srclen = sizeof(src);
@@ -107,12 +122,12 @@ void my_message_callback(struct mosquitto *mosq, void *obj, const struct mosquit
 		printf("decode[%d]=%s\n", dstlen, dst);
 	}
 
-	if(cfg.msg_count>0){
-		msg_count++;
-		if(cfg.msg_count == msg_count){
-			process_messages = false;
-			if(last_mid == 0){
-				mosquitto_disconnect_v5(mosq, 0, cfg.disconnect_props);
+	if(fd->cfg.msg_count>0){
+		fd->msg_count++;
+		if(fd->cfg.msg_count == fd->msg_count){
+			fd->process_messages = false;
+			if(fd->last_mid == 0){
+				mosquitto_disconnect_v5(mosq, 0, fd->cfg.disconnect_props);
 			}
 		}
 	}
@@ -120,6 +135,7 @@ void my_message_callback(struct mosquitto *mosq, void *obj, const struct mosquit
 
 void my_connect_callback(struct mosquitto *mosq, void *obj, int result, int flags, const mosquitto_property *properties)
 {
+	PSUB_CLIENT_FD_S fd = &sub_client_fd;
 	int i;
 
 	UNUSED(obj);
@@ -127,41 +143,42 @@ void my_connect_callback(struct mosquitto *mosq, void *obj, int result, int flag
 	UNUSED(properties);
 
 	if(!result){
-		mosquitto_subscribe_multiple(mosq, NULL, cfg.topic_count, cfg.topics, cfg.qos, cfg.sub_opts, cfg.subscribe_props);
+		mosquitto_subscribe_multiple(mosq, NULL, fd->cfg.topic_count, fd->cfg.topics, fd->cfg.qos, fd->cfg.sub_opts, fd->cfg.subscribe_props);
 
-		for(i=0; i<cfg.unsub_topic_count; i++){
-			mosquitto_unsubscribe_v5(mosq, NULL, cfg.unsub_topics[i], cfg.unsubscribe_props);
+		for(i=0; i<fd->cfg.unsub_topic_count; i++){
+			mosquitto_unsubscribe_v5(mosq, NULL, fd->cfg.unsub_topics[i], fd->cfg.unsubscribe_props);
 		}
 	}else{
 		if(result){
-			if(cfg.protocol_version == MQTT_PROTOCOL_V5){
+			if(fd->cfg.protocol_version == MQTT_PROTOCOL_V5){
 				if(result == MQTT_RC_UNSUPPORTED_PROTOCOL_VERSION){
-					err_printf(&cfg, "Connection error: %s. Try connecting to an MQTT v5 broker, or use MQTT v3.x mode.\n", mosquitto_reason_string(result));
+					err_printf(&fd->cfg, "Connection error: %s. Try connecting to an MQTT v5 broker, or use MQTT v3.x mode.\n", mosquitto_reason_string(result));
 				}else{
-					err_printf(&cfg, "Connection error: %s\n", mosquitto_reason_string(result));
+					err_printf(&fd->cfg, "Connection error: %s\n", mosquitto_reason_string(result));
 				}
 			}else{
-				err_printf(&cfg, "Connection error: %s\n", mosquitto_connack_string(result));
+				err_printf(&fd->cfg, "Connection error: %s\n", mosquitto_connack_string(result));
 			}
 		}
-		mosquitto_disconnect_v5(mosq, 0, cfg.disconnect_props);
+		mosquitto_disconnect_v5(mosq, 0, fd->cfg.disconnect_props);
 	}
 }
 
 void my_subscribe_callback(struct mosquitto *mosq, void *obj, int mid, int qos_count, const int *granted_qos)
 {
+	PSUB_CLIENT_FD_S fd = &sub_client_fd;
 	int i;
 
 	UNUSED(obj);
 
-	if(!cfg.quiet) printf("Subscribed (mid: %d): %d", mid, granted_qos[0]);
+	if(!fd->cfg.quiet) printf("Subscribed (mid: %d): %d", mid, granted_qos[0]);
 	for(i=1; i<qos_count; i++){
-		if(!cfg.quiet) printf(", %d", granted_qos[i]);
+		if(!fd->cfg.quiet) printf(", %d", granted_qos[i]);
 	}
-	if(!cfg.quiet) printf("\n");
+	if(!fd->cfg.quiet) printf("\n");
 
-	if(cfg.exit_after_sub){
-		mosquitto_disconnect_v5(mosq, 0, cfg.disconnect_props);
+	if(fd->cfg.exit_after_sub){
+		mosquitto_disconnect_v5(mosq, 0, fd->cfg.disconnect_props);
 	}
 }
 
@@ -183,7 +200,7 @@ void print_usage(void)
 	printf("mosquitto_sub version %s running on libmosquitto %d.%d.%d.\n\n", VERSION, major, minor, revision);
 	printf("Usage: mosquitto_sub {[-h host] [-p port] [-u username] [-P password] -t topic | -L URL [-t topic]}\n");
 	printf("                     [-c] [-k keepalive] [-q qos]\n");
-	printf("                     [-C msg_count] [-E] [-R] [--retained-only] [--remove-retained] [-T filter_out] [-U topic ...]\n");
+	printf("                     [-C fd->msg_count] [-E] [-R] [--retained-only] [--remove-retained] [-T filter_out] [-U topic ...]\n");
 	printf("                     [-F format]\n");
 #ifndef WIN32
 	printf("                     [-W timeout_secs]\n");
@@ -213,7 +230,7 @@ void print_usage(void)
 	printf(" -A : bind the outgoing socket to this host/ip address. Use to control which interface\n");
 	printf("      the client communicates over.\n");
 	printf(" -c : disable 'clean session' (store subscription and pending messages when client disconnects).\n");
-	printf(" -C : disconnect and exit after receiving the 'msg_count' messages.\n");
+	printf(" -C : disconnect and exit after receiving the 'fd->msg_count' messages.\n");
 	printf(" -d : enable debug messages.\n");
 	printf(" -D : Define MQTT v5 properties. See the documentation for more details.\n");
 	printf(" -E : Exit once all subscriptions have been acknowledged by the broker.\n");
@@ -287,6 +304,7 @@ void print_usage(void)
 
 int main(int argc, char *argv[])
 {
+	PSUB_CLIENT_FD_S fd = &sub_client_fd;
 	int rc;
 #ifndef WIN32
 		struct sigaction sigact;
@@ -294,7 +312,7 @@ int main(int argc, char *argv[])
 
 	mosquitto_lib_init();
 
-	rc = client_config_load(&cfg, CLIENT_SUB, argc, argv);
+	rc = client_config_load_v2(&fd->cfg, CLIENT_SUB, argc, argv, &fd->process_messages);
 	if(rc){
 		if(rc == 2){
 			/* --help */
@@ -305,38 +323,38 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if(cfg.no_retain && cfg.retained_only){
+	if(fd->cfg.no_retain && fd->cfg.retained_only){
 		fprintf(stderr, "\nError: Combining '-R' and '--retained-only' makes no sense.\n");
 		goto cleanup;
 	}
 
-	if(client_id_generate(&cfg)){
+	if(client_id_generate(&fd->cfg)){
 		goto cleanup;
 	}
 
-	mosq = mosquitto_new(cfg.id, cfg.clean_session, &cfg);
-	if(!mosq){
+	fd->mosq = mosquitto_new(fd->cfg.id, fd->cfg.clean_session, &fd->cfg);
+	if(!fd->mosq){
 		switch(errno){
 			case ENOMEM:
-				err_printf(&cfg, "Error: Out of memory.\n");
+				err_printf(&fd->cfg, "Error: Out of memory.\n");
 				break;
 			case EINVAL:
-				err_printf(&cfg, "Error: Invalid id and/or clean_session.\n");
+				err_printf(&fd->cfg, "Error: Invalid id and/or clean_session.\n");
 				break;
 		}
 		goto cleanup;
 	}
-	if(client_opts_set(mosq, &cfg)){
+	if(client_opts_set(fd->mosq, &fd->cfg)){
 		goto cleanup;
 	}
-	if(cfg.debug){
-		mosquitto_log_callback_set(mosq, my_log_callback);
-		mosquitto_subscribe_callback_set(mosq, my_subscribe_callback);
+	if(fd->cfg.debug){
+		mosquitto_log_callback_set(fd->mosq, my_log_callback);
+		mosquitto_subscribe_callback_set(fd->mosq, my_subscribe_callback);
 	}
-	mosquitto_connect_v5_callback_set(mosq, my_connect_callback);
-	mosquitto_message_v5_callback_set(mosq, my_message_callback);
+	mosquitto_connect_v5_callback_set(fd->mosq, my_connect_callback);
+	mosquitto_message_v5_callback_set(fd->mosq, my_message_callback);
 
-	rc = client_connect(mosq, &cfg);
+	rc = client_connect(fd->mosq, &fd->cfg);
 	if(rc){
 		goto cleanup;
 	}
@@ -351,28 +369,28 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if(cfg.timeout){
-		alarm(cfg.timeout);
+	if(fd->cfg.timeout){
+		alarm(fd->cfg.timeout);
 	}
 #endif
 
-	rc = mosquitto_loop_forever(mosq, -1, 1);
+	rc = mosquitto_loop_forever(fd->mosq, -1, 1);
 
-	mosquitto_destroy(mosq);
+	mosquitto_destroy(fd->mosq);
 	mosquitto_lib_cleanup();
 
-	if(cfg.msg_count>0 && rc == MOSQ_ERR_NO_CONN){
+	if(fd->cfg.msg_count>0 && rc == MOSQ_ERR_NO_CONN){
 		rc = 0;
 	}
-	client_config_cleanup(&cfg);
+	client_config_cleanup(&fd->cfg);
 	if(rc){
-		err_printf(&cfg, "Error: %s\n", mosquitto_strerror(rc));
+		err_printf(&fd->cfg, "Error: %s\n", mosquitto_strerror(rc));
 	}
 	return rc;
 
 cleanup:
 	mosquitto_lib_cleanup();
-	client_config_cleanup(&cfg);
+	client_config_cleanup(&fd->cfg);
 	return 1;
 }
 

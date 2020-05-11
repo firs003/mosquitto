@@ -72,5 +72,8 @@ test/unit/persist_read_test
 test/unit/persist_write_test
 test/unit/out/
 
+client/libclient_shared.a
+client/mosquitto_sub_mp
+
 www/cache/
 __pycache__

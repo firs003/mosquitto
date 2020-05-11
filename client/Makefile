@@ -7,10 +7,10 @@ SHARED_DEP:=../lib/libmosquitto.so.${SOVERSION}
 endif
 
 ifeq ($(WITH_SHARED_LIBRARIES),yes)
-ALL_DEPS:= mosquitto_pub mosquitto_sub mosquitto_rr
+ALL_DEPS:= mosquitto_pub mosquitto_sub mosquitto_rr mosquitto_sub_mp
 else
 ifeq ($(WITH_STATIC_LIBRARIES),yes)
-ALL_DEPS:= static_pub static_sub static_rr
+ALL_DEPS:= static_pub static_sub static_rr static sub_mp
 endif
 endif
 
@@ -36,6 +36,9 @@ mosquitto_sub : sub_client.o sub_client_output.o client_shared.o client_props.o 
 	${CROSS_COMPILE}${CC} $(CLIENT_LDFLAGS) $^ -o $@ $(CLIENT_LDADD)
 	${CROSS_COMPILE}$(AR) $(AR_FLAGS) libclient_shared.a sub_client_output.o client_shared.o client_props.o base64.o
 
+mosquitto_sub_mp : sub_client_mp.o sub_client_output.o client_shared.o client_props.o base64.o client1_thread.o client2_thread.o
+	${CROSS_COMPILE}${CC} $(CLIENT_LDFLAGS) $^ -o $@ $(CLIENT_LDADD) -pthread
+
 mosquitto_rr : rr_client.o client_shared.o client_props.o pub_shared.o sub_client_output.o
 	${CROSS_COMPILE}${CC} $(CLIENT_LDFLAGS) $^ -o $@ $(CLIENT_LDADD)
 
@@ -43,6 +46,15 @@ pub_client.o : pub_client.c ${SHARED_DEP}
 	${CROSS_COMPILE}${CC} $(CLIENT_CPPFLAGS) $(CLIENT_CFLAGS) -c $< -o $@
 
 pub_shared.o : pub_shared.c ${SHARED_DEP}
+	${CROSS_COMPILE}${CC} $(CLIENT_CPPFLAGS) $(CLIENT_CFLAGS) -c $< -o $@
+
+sub_client_mp.o : sub_client_mp.c ${SHARED_DEP}
+	${CROSS_COMPILE}${CC} $(CLIENT_CPPFLAGS) $(CLIENT_CFLAGS) -c $< -o $@
+
+client1_thread.o : client1_thread.c ${SHARED_DEP}
+	${CROSS_COMPILE}${CC} $(CLIENT_CPPFLAGS) $(CLIENT_CFLAGS) -c $< -o $@
+
+client2_thread.o : client2_thread.c ${SHARED_DEP}
 	${CROSS_COMPILE}${CC} $(CLIENT_CPPFLAGS) $(CLIENT_CFLAGS) -c $< -o $@
 
 sub_client.o : sub_client.c ${SHARED_DEP}

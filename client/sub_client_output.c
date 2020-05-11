@@ -4,12 +4,12 @@ Copyright (c) 2009-2019 Roger Light <roger@atchoo.org>
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License v1.0
 and Eclipse Distribution License v1.0 which accompany this distribution.
- 
+
 The Eclipse Public License is available at
    http://www.eclipse.org/legal/epl-v10.html
 and the Eclipse Distribution License is available at
   http://www.eclipse.org/org/documents/edl-v10.php.
- 
+
 Contributors:
    Roger Light - initial implementation and documentation.
 */
@@ -37,9 +37,9 @@ Contributors:
 #include <mosquitto.h>
 #include "client_shared.h"
 
-extern struct mosq_config cfg;
+// extern struct mosq_config cfg;
 
-static int get_time(struct tm **ti, long *ns)
+static int get_time(const struct mosq_config *cfg, struct tm **ti, long *ns)
 {
 #ifdef WIN32
 	SYSTEMTIME st;
@@ -61,7 +61,7 @@ static int get_time(struct tm **ti, long *ns)
 	*ns = tv.tv_usec*1000;
 #else
 	if(clock_gettime(CLOCK_REALTIME, &ts) != 0){
-		err_printf(&cfg, "Error obtaining system time.\n");
+		err_printf(cfg, "Error obtaining system time.\n");
 		return 1;
 	}
 	s = ts.tv_sec;
@@ -70,7 +70,7 @@ static int get_time(struct tm **ti, long *ns)
 
 	*ti = localtime(&s);
 	if(!(*ti)){
-		err_printf(&cfg, "Error obtaining system time.\n");
+		err_printf(cfg, "Error obtaining system time.\n");
 		return 1;
 	}
 
@@ -153,7 +153,7 @@ static void formatted_print(const struct mosq_config *lcfg, const struct mosquit
 
 					case 'I':
 						if(!ti){
-							if(get_time(&ti, &ns)){
+							if(get_time(lcfg, &ti, &ns)){
 								err_printf(lcfg, "Error obtaining system time.\n");
 								return;
 							}
@@ -165,7 +165,7 @@ static void formatted_print(const struct mosq_config *lcfg, const struct mosquit
 
 					case 'j':
 						if(!ti){
-							if(get_time(&ti, &ns)){
+							if(get_time(lcfg, &ti, &ns)){
 								err_printf(lcfg, "Error obtaining system time.\n");
 								return;
 							}
@@ -175,7 +175,7 @@ static void formatted_print(const struct mosq_config *lcfg, const struct mosquit
 
 					case 'J':
 						if(!ti){
-							if(get_time(&ti, &ns)){
+							if(get_time(lcfg, &ti, &ns)){
 								err_printf(lcfg, "Error obtaining system time.\n");
 								return;
 							}
@@ -213,7 +213,7 @@ static void formatted_print(const struct mosq_config *lcfg, const struct mosquit
 
 					case 'U':
 						if(!ti){
-							if(get_time(&ti, &ns)){
+							if(get_time(lcfg, &ti, &ns)){
 								err_printf(lcfg, "Error obtaining system time.\n");
 								return;
 							}
@@ -239,7 +239,7 @@ static void formatted_print(const struct mosq_config *lcfg, const struct mosquit
 					fputc('@', stdout);
 				}else{
 					if(!ti){
-						if(get_time(&ti, &ns)){
+						if(get_time(lcfg, &ti, &ns)){
 							err_printf(lcfg, "Error obtaining system time.\n");
 							return;
 						}
